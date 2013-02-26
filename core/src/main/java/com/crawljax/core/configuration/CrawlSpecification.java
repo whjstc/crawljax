@@ -79,6 +79,8 @@ public class CrawlSpecification {
 	private boolean clicklOnce = true;
 	private boolean disableCrawlFrames = false;
 
+	private boolean clickHiddenAnchors = false;
+
 	/**
 	 * @param url
 	 *            the site to crawl
@@ -109,19 +111,6 @@ public class CrawlSpecification {
 	}
 
 	/**
-	 * Click {@link #clickDefaultElements()}, {@link #clickTableElements()} and click
-	 * <code>"span", "div", "ol", "center", "li", "radio", "non", "meta",
-		        "refresh", "xhr", "relative", "link", "self", "form", "input", "option", "img",
-		        "p"</code>
-	 */
-	public void clickMoreElements() {
-		clickDefaultElements();
-		clickTableElements();
-		click("span", "div", "ol", "center", "li", "radio", "non", "meta", "refresh", "xhr",
-		        "relative", "link", "self", "form", "input", "option", "img", "p");
-	}
-
-	/**
 	 * Set of HTML elements Crawljax will click during crawling For exmple 1) <a.../> 2) <div/>
 	 * click("a") will only include 1 This set can be restricted by {@link #dontClick(String)}.
 	 * 
@@ -133,13 +122,6 @@ public class CrawlSpecification {
 		for (String tagName : tagNames) {
 			crawlActions.click(tagName);
 		}
-	}
-
-	/**
-	 * Clicks <code>"td", "tr", "table", "tbody"</code>
-	 */
-	public void clickTableElements() {
-		click("td", "tr", "table", "tbody");
 	}
 
 	/**
@@ -225,14 +207,27 @@ public class CrawlSpecification {
 	}
 
 	/**
-	 * Sets the maximum time for Crawljax to run. Crawljax will stop crawling when this timelimit is
-	 * reached.
+	 * Sets the maximum time for Crawljax to run. Crawljax will stop crawling when this time limit
+	 * is reached.
 	 * 
+	 * @param the
+	 *            crawlMaximumRuntime to set
+	 */
+	public void setMaximumRuntime(long time, TimeUnit timeUnit) {
+		this.maximumRuntime = timeUnit.toMillis(time);
+	}
+
+	/**
+	 * Sets the maximum time for Crawljax to run. Crawljax will stop crawling when this time limit
+	 * is reached.
+	 * 
+	 * @deprecated use {@link #setMaximumRuntime(long, TimeUnit)}.
 	 * @param seconds
 	 *            the crawlMaximumRuntime to set
 	 */
-	public void setMaximumRuntime(long time, TimeUnit timeUnit) {
-		this.maximumRuntime = timeUnit.toSeconds(time);
+	@Deprecated
+	public void setMaximumRuntime(long time) {
+		this.maximumRuntime = TimeUnit.SECONDS.toMillis(time);
 	}
 
 	/**
@@ -258,11 +253,21 @@ public class CrawlSpecification {
 	}
 
 	/**
-	 * @param milliseconds
-	 *            the number of milliseconds to wait after reloading the url
+	 * @param time
+	 *            to wait after reloading the url
 	 */
 	public void setWaitTimeAfterReloadUrl(long time, TimeUnit unit) {
 		this.waitTimeAfterReloadUrl = unit.toMillis(time);
+	}
+
+	/**
+	 * @deprecated use {@link #setWaitTimeAfterReloadUrl(long, TimeUnit)}
+	 * @param time
+	 *            to wait after reloading the url
+	 */
+	@Deprecated
+	public void setWaitTimeAfterReloadUrl(long timeInMillis) {
+		this.waitTimeAfterReloadUrl = timeInMillis;
 	}
 
 	/**
@@ -273,11 +278,21 @@ public class CrawlSpecification {
 	}
 
 	/**
-	 * @param milliseconds
-	 *            the number of milliseconds to wait after an event is fired
+	 * @param the
+	 *            time to wait after an event is fired
 	 */
 	public void setWaitTimeAfterEvent(long time, TimeUnit unit) {
 		this.waitTimeAfterEvent = unit.toMillis(time);
+	}
+
+	/**
+	 * @deprecated use {@link #setWaitTimeAfterEvent(long, TimeUnit)}
+	 * @param milliseconds
+	 *            the number of milliseconds to wait after an event is fired
+	 */
+	@Deprecated
+	public void setWaitTimeAfterEvent(long time) {
+		this.waitTimeAfterEvent = time;
 	}
 
 	/**
@@ -500,5 +515,26 @@ public class CrawlSpecification {
 	 */
 	protected boolean isCrawlFrames() {
 		return !disableCrawlFrames;
+	}
+
+	boolean isClickHiddenAnchors() {
+		return clickHiddenAnchors;
+	}
+
+	/**
+	 * Set Crawljax to click hidden anchors or not. <code>true</code> by default. @ *
+	 * <dl>
+	 * <dd>Pro:</dd>
+	 * <dt>The benefit of clicking hidden anchors is that Crawljax isn't capable of clicking
+	 * elements that are hidden for example because you have to hover another element first. This
+	 * happens in most fold-out menus for example. Enabling this function allows Crawljax to find
+	 * more states that are hidden this way.</dt>
+	 * <dd>Con:</dd>
+	 * <dt>If a anchor tag is never visible in the browser in any way, Crawljax will crawl it
+	 * anyway. This makes the Crawl inconsistent with what the user experiences.</dt>
+	 * </dl>
+	 */
+	public void clickHiddenAnchors(boolean clickHiddenAnchors) {
+		this.clickHiddenAnchors = clickHiddenAnchors;
 	}
 }

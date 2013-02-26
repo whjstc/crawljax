@@ -18,6 +18,7 @@ import org.openqa.selenium.NoSuchFrameException;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.Platform;
 import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.UnhandledAlertException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
@@ -231,7 +232,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 		try {
 			executor = new HttpCommandExecutor(url);
 		} catch (Exception e) {
-			// TODO Stefan; refactor this catch, this will definitely result in NullPointers, why
+			// TODO Stefan; refactor this catch, this will definitely result in
+			// NullPointers, why
 			// not throw RuntimeExcption direct?
 			LOGGER.error("Received unknown exception while creating the "
 			        + "HttpCommandExecutor, can not continue!", e);
@@ -292,27 +294,24 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 	 *            The HTML event type (onclick, onmouseover, ...).
 	 * @return true if firing event is successful.
 	 */
-	protected boolean fireEventWait(WebElement webElement, Eventable eventable) {
+	protected boolean fireEventWait(WebElement webElement, Eventable eventable)
+	        throws ElementNotVisibleException {
 		switch (eventable.getEventType()) {
 			case click:
 				try {
 					webElement.click();
-				} catch (ElementNotVisibleException e1) {
-					LOGGER.info("Element not visible, so cannot be clicked: "
-					        + webElement.getTagName().toUpperCase() + " " + webElement.getText());
-					return false;
+				} catch (ElementNotVisibleException e) {
+					throw e;
 				} catch (WebDriverException e) {
 					throwIfConnectionException(e);
 					return false;
 				}
 				break;
 			case hover:
-				// todo
+				LOGGER.info("Eventype hover called but this isnt implemented yet");
 				break;
-
 			default:
-				LOGGER.info("EventType " + eventable.getEventType()
-				        + " not supported in WebDriver.");
+				LOGGER.info("EventType {} not supported in WebDriver.", eventable.getEventType());
 				return false;
 		}
 
@@ -437,7 +436,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 	 * @return true if it is able to fire the event successfully on the element.
 	 */
 	@Override
-	public synchronized boolean fireEvent(Eventable eventable) {
+	public synchronized boolean fireEvent(Eventable eventable) throws ElementNotVisibleException,
+	        NoSuchElementException {
 		try {
 
 			boolean handleChanged = false;
@@ -450,8 +450,10 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 					switchToFrame(eventable.getRelatedFrame());
 				} catch (NoSuchFrameException e) {
 					LOGGER.debug("Frame not found, possibily while back-tracking..", e);
-					// TODO Stefan, This exception is catched to prevent stopping from working
-					// This was the case on the Gmail case; find out if not switching (catching)
+					// TODO Stefan, This exception is catched to prevent stopping
+					// from working
+					// This was the case on the Gmail case; find out if not switching
+					// (catching)
 					// Results in good performance...
 				}
 				handleChanged = true;
@@ -468,9 +470,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 				browser.switchTo().defaultContent();
 			}
 			return result;
-		} catch (NoSuchElementException e) {
-			LOGGER.warn("Could not fire eventable: " + eventable.toString());
-			return false;
+		} catch (ElementNotVisibleException | NoSuchElementException e) {
+			throw e;
 		} catch (WebDriverException e) {
 			throwIfConnectionException(e);
 			return false;
@@ -544,6 +545,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 					browser.switchTo().window(current);
 				}
 			}
+		} catch (UnhandledAlertException e) {
+			LOGGER.warn("While closing the window, an alert got ignored: {}", e.getMessage());
 		} catch (WebDriverException e) {
 			throw wrapWebDriverExceptionIfConnectionException(e);
 		}
@@ -662,7 +665,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 	/**
 	 * @param input
 	 *            the input to be filled.
-	 * @return FormInput with random value assigned if possible
+	 * @return FormInput with random value assigned if possible. If no values were set it returns
+	 *         <code>null</code>
 	 */
 	@Override
 	public FormInput getInputWithRandomValue(FormInput input) {
@@ -670,8 +674,7 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 		WebElement webElement;
 		try {
 			webElement = browser.findElement(input.getIdentification().getWebDriverBy());
-			if (!(webElement.isDisplayed())) {
-
+			if (!webElement.isDisplayed()) {
 				return null;
 			}
 		} catch (WebDriverException e) {
@@ -679,40 +682,42 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 			return null;
 		}
 
-		Set<InputValue> values = new HashSet<InputValue>();
-
-		// create some random value
-
-		if (input.getType().toLowerCase().startsWith("text")) {
-			values.add(new InputValue(new RandomInputValueGenerator()
-			        .getRandomString(FormHandler.RANDOM_STRING_LENGTH), true));
-		} else if (input.getType().equalsIgnoreCase("checkbox")
-		        || input.getType().equalsIgnoreCase("radio") && !webElement.isSelected()) {
-			if (new RandomInputValueGenerator().getCheck()) {
-				values.add(new InputValue("1", true));
-			} else {
-				values.add(new InputValue("0", false));
-
-			}
-		} else if (input.getType().equalsIgnoreCase("select")) {
-			try {
-				Select select = new Select(webElement);
-				WebElement option =
-				        (WebElement) new RandomInputValueGenerator().getRandomOption(select
-				                .getOptions());
-				values.add(new InputValue(option.getText(), true));
-			} catch (WebDriverException e) {
-				throwIfConnectionException(e);
-				return null;
-			}
+		Set<InputValue> values = new HashSet<>();
+		try {
+			setRandomValues(input, webElement, values);
+		} catch (WebDriverException e) {
+			throwIfConnectionException(e);
+			return null;
 		}
-
-		if (values.size() == 0) {
+		if (values.isEmpty()) {
 			return null;
 		}
 		input.setInputValues(values);
 		return input;
 
+	}
+
+	private void setRandomValues(FormInput input, WebElement webElement, Set<InputValue> values) {
+		String inputString = input.getType().toLowerCase();
+		if (inputString.startsWith("text")) {
+			values.add(new InputValue(new RandomInputValueGenerator()
+			        .getRandomString(FormHandler.RANDOM_STRING_LENGTH), true));
+		} else if (inputString.equals("checkbox") || inputString.equals("radio")
+		        && !webElement.isSelected()) {
+			if (new RandomInputValueGenerator().getCheck()) {
+				values.add(new InputValue("1", true));
+			} else {
+				values.add(new InputValue("0", false));
+			}
+		} else if (inputString.equals("select")) {
+			Select select = new Select(webElement);
+			if (!select.getOptions().isEmpty()) {
+				WebElement option =
+				        new RandomInputValueGenerator().getRandomItem(select.getOptions());
+				values.add(new InputValue(option.getText(), true));
+			}
+
+		}
 	}
 
 	@Override
@@ -742,7 +747,8 @@ public final class WebDriverBackedEmbeddedBrowser implements EmbeddedBrowser {
 	public boolean elementExists(Identification identification) {
 		try {
 			WebElement el = browser.findElement(identification.getWebDriverBy());
-			// TODO Stefan; I think el will never be null as a NoSuchElementExcpetion will be
+			// TODO Stefan; I think el will never be null as a
+			// NoSuchElementExcpetion will be
 			// thrown, catched below.
 			return el != null;
 		} catch (WebDriverException e) {
